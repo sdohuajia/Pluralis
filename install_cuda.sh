@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# 脚本保存路径
-SCRIPT_PATH="$HOME/install_cuda.sh"
-
 # 主菜单函数
 function main_menu() {
     while true; do
@@ -56,6 +53,7 @@ function install_and_deploy() {
     if ! command -v python3 &> /dev/null || ! command -v pip3 &> /dev/null; then
         echo "安装 Python 和开发工具..."
         sudo apt install -y python3-pip
+        sudo apt install pip
         sudo apt install -y build-essential libssl-dev libffi-dev python3-dev
     else
         echo "Python 工具已安装，跳过..."
@@ -69,14 +67,13 @@ function install_and_deploy() {
         bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
         rm ~/miniconda3/miniconda.sh
         
-        echo "正在初始化 Miniconda..."
-        ~/miniconda3/bin/conda init bash
+        echo "正在激活和初始化 Miniconda..."
+        source ~/miniconda3/bin/activate
+        conda init --all
     else
         echo "Miniconda 已安装，跳过..."
+        source ~/miniconda3/bin/activate
     fi
-
-    # 确保 conda 命令可用
-    source ~/.bashrc
 
     echo "正在检查并安装 NVIDIA CUDA Toolkit..."
     if ! command -v nvcc &> /dev/null; then
@@ -112,42 +109,51 @@ function install_and_deploy() {
     screen -S pluralis -d -m
 
     echo "正在检查并创建 conda 环境..."
-    # 确保 conda 可用
-    source ~/miniconda3/bin/activate
+    # 使用完整路径确保 conda 可用
+    export PATH="$HOME/miniconda3/bin:$PATH"
     
-    if ! conda env list | grep -q "node0"; then
-        echo "创建 conda 环境..."
-        conda create -n node0 python=3.11 -y
-    else
-        echo "Conda 环境 'node0' 已存在，检查 Python 版本..."
-        source ~/miniconda3/bin/activate node0
-        python_version=$(python --version 2>&1 | cut -d' ' -f2 | cut -d'.' -f1,2)
-        if [ "$python_version" != "3.11" ]; then
-            echo "当前 Python 版本为 $python_version，需要重新创建环境..."
-            conda env remove -n node0 -y
-            conda create -n node0 python=3.11 -y
+    # 检查 conda 环境列表
+    echo "可用的 conda 环境:"
+    $HOME/miniconda3/bin/conda env list
+    
+    # 接受 conda 服务条款
+    echo "接受 conda 服务条款..."
+    $HOME/miniconda3/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+    $HOME/miniconda3/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+    
+    # 强制重新创建环境
+    echo "删除现有环境（如果存在）..."
+    $HOME/miniconda3/bin/conda env remove -n node0 -y 2>/dev/null || true
+    
+    echo "创建新的 conda 环境..."
+    $HOME/miniconda3/bin/conda create -n node0 python=3.11 -y
+    
+    # 等待环境创建完成
+    sleep 5
+    
+    # 验证环境是否创建成功
+    if [ ! -d "$HOME/miniconda3/envs/node0" ]; then
+        echo "错误：conda 环境创建失败！"
+        echo "尝试使用系统 Python 3.11..."
+        # 尝试安装 Python 3.11
+        if command -v python3.11 &> /dev/null; then
+            echo "使用系统 Python 3.11..."
+            python3.11 -m pip install .
+        else
+            echo "系统没有 Python 3.11，尝试安装..."
+            sudo apt update
+            sudo apt install -y python3.11 python3.11-pip
+            python3.11 -m pip install .
         fi
+    else
+        echo "正在激活 conda 环境并安装包..."
+        # 使用环境中的直接路径
+        echo "当前 Python 版本: $($HOME/miniconda3/envs/node0/bin/python --version)"
+        echo "当前 Python 路径: $($HOME/miniconda3/envs/node0/bin/python)"
+        
+        # 在 node0 环境中安装包
+        $HOME/miniconda3/envs/node0/bin/pip install .
     fi
-
-    echo "正在激活 conda 环境..."
-    # 确保激活正确的 conda 环境
-    source ~/miniconda3/bin/activate node0
-    echo "当前 Python 版本: $(python --version)"
-    echo "当前 Python 路径: $(which python)"
-    echo "当前 Pip 路径: $(which pip)"
-
-    # 验证 pip 版本是否匹配 Python 3.11
-    pip_version=$(pip --version | grep -o 'python3\.[0-9]\+')
-    if [[ "$pip_version" != "python3.11" ]]; then
-        echo "Pip 版本不匹配，尝试重新安装 pip..."
-        curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-        python get-pip.py
-        rm get-pip.py
-        echo "Pip 重新安装完成，当前 Pip 路径: $(which pip)"
-    fi
-
-    echo "正在安装 node0 包..."
-    pip install . --no-cache-dir
 
     echo "请输入您的 Hugging Face Token:"
     read HF_TOKEN
@@ -156,7 +162,7 @@ function install_and_deploy() {
     read EMAIL_ADDRESS
 
     echo "正在运行 generate_script.py..."
-    python generate_script.py --host_port 49200 --token $HF_TOKEN --email $EMAIL_ADDRESS
+    python3 generate_script.py --host_port 49200 --token $HF_TOKEN --email $EMAIL_ADDRESS
 
     echo ""
     echo "=========================================="
@@ -165,9 +171,17 @@ function install_and_deploy() {
     echo ""
 
     echo "正在启动服务器..."
-    # 确保在正确的 conda 环境中启动服务器
-    source ~/miniconda3/bin/activate node0
-    ./start_server.sh
+    # 检查环境是否存在，选择启动方式
+    if [ -d "$HOME/miniconda3/envs/node0" ]; then
+        echo "使用 conda 环境启动服务器..."
+        $HOME/miniconda3/envs/node0/bin/python ./start_server.sh
+    elif command -v python3.11 &> /dev/null; then
+        echo "使用系统 Python 3.11 启动服务器..."
+        python3.11 ./start_server.sh
+    else
+        echo "使用系统 Python 启动服务器..."
+        python3 ./start_server.sh
+    fi
 
     echo "安装完成！"
     echo "按任意键返回主菜单..."

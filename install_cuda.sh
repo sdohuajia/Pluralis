@@ -38,88 +38,81 @@ function main_menu() {
 
 # 安装部署节点函数
 function install_and_deploy() {
-    echo "正在检查和更新包管理器..."
+    echo "正在更新包管理器..."
     sudo apt update && sudo apt upgrade -y
 
     echo "正在检查并安装基础工具和依赖..."
-    packages="screen curl iptables build-essential git wget lz4 jq make gcc nano automake autoconf tmux htop nvme-cli libgbm1 pkg-config libssl-dev libleveldb-dev tar clang bsdmainutils ncdu unzip"
-    for pkg in $packages; do
-        if dpkg -l | grep -qw $pkg; then
-            echo "$pkg 已安装，跳过..."
-        else
-            echo "安装 $pkg..."
-            sudo apt install -y $pkg
-        fi
-    done
+    if ! command -v screen &> /dev/null || ! command -v curl &> /dev/null || ! command -v git &> /dev/null; then
+        echo "安装基础工具和依赖..."
+        sudo apt install screen curl iptables build-essential git wget lz4 jq make gcc nano automake autoconf tmux htop nvme-cli libgbm1 pkg-config libssl-dev libleveldb-dev tar clang bsdmainutils ncdu unzip libleveldb-dev -y
+    else
+        echo "基础工具已安装，跳过..."
+    fi
 
     echo "正在检查并安装 Python 和开发工具..."
-    if ! command -v python3 &> /dev/null; then
+    if ! command -v python3 &> /dev/null || ! command -v pip3 &> /dev/null; then
+        echo "安装 Python 和开发工具..."
         sudo apt install -y python3-pip
+        sudo apt install pip
         sudo apt install -y build-essential libssl-dev libffi-dev python3-dev
     else
-        echo "Python3 已安装，跳过..."
+        echo "Python 工具已安装，跳过..."
     fi
 
     echo "正在检查并安装 Miniconda..."
-    if [ -d ~/miniconda3 ]; then
-        echo "Miniconda 已安装，跳过..."
-    else
+    if [ ! -d "~/miniconda3" ] || ! command -v conda &> /dev/null; then
+        echo "安装 Miniconda..."
         mkdir -p ~/miniconda3
         wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
         bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
         rm ~/miniconda3/miniconda.sh
-    fi
-
-    echo "正在激活和初始化 Miniconda..."
-    source ~/miniconda3/bin/activate
-    if ! command -v conda &> /dev/null; then
+        
+        echo "正在激活和初始化 Miniconda..."
+        source ~/miniconda3/bin/activate
         conda init --all
     else
-        echo "Conda 已初始化，跳过..."
+        echo "Miniconda 已安装，跳过..."
+        source ~/miniconda3/bin/activate
     fi
 
     echo "正在检查并安装 NVIDIA CUDA Toolkit..."
     if ! command -v nvcc &> /dev/null; then
+        echo "安装 NVIDIA CUDA Toolkit..."
         sudo apt-get install -y nvidia-cuda-toolkit
     else
-        echo "NVIDIA CUDA Toolkit 已安装，跳过..."
+        echo "CUDA Toolkit 已安装，跳过..."
     fi
 
     echo "检查 NVIDIA 驱动状态..."
-    if command -v nvidia-smi &> /dev/null; then
-        nvidia-smi
-    else
-        echo "NVIDIA 驱动未安装，请检查硬件或手动安装驱动。"
-    fi
+    nvidia-smi
 
     echo "检查 CUDA 编译器版本..."
-    if command -v nvcc &> /dev/null; then
-        nvcc --version
-    else
-        echo "CUDA 编译器未安装。"
-    fi
+    nvcc --version
 
     echo "正在检查并克隆 node0 仓库..."
-    if [ -d "node0" ]; then
-        echo "node0 仓库已存在，跳过克隆..."
-        cd node0
-    else
+    if [ ! -d "node0" ]; then
+        echo "克隆 node0 仓库..."
         git clone https://github.com/PluralisResearch/node0
-        cd node0
+    else
+        echo "node0 仓库已存在，跳过克隆..."
     fi
+    
+    cd node0
 
     echo "正在检查并创建 screen 会话..."
-    if screen -list | grep -q "pluralis"; then
-        echo "Screen 会话 'pluralis' 已存在，跳过创建..."
-    else
+    if ! screen -list | grep -q "pluralis"; then
+        echo "创建 screen 会话..."
         screen -S pluralis -d -m
+    else
+        echo "Screen 会话 'pluralis' 已存在，跳过创建..."
     fi
 
     echo "正在检查并创建 conda 环境..."
-    if conda info --envs | grep -q "node0"; then
-        echo "Conda 环境 node0 已存在，跳过创建..."
-    else
+    if ! conda env list | grep -q "node0"; then
+        echo "创建 conda 环境..."
         conda create -n node0 python=3.11 -y
+    else
+        echo "Conda 环境 'node0' 已存在，跳过创建..."
     fi
 
     echo "正在激活 conda 环境并安装包..."
@@ -141,12 +134,8 @@ function install_and_deploy() {
     echo "=========================================="
     echo ""
 
-    echo "正在检查并启动服务器..."
-    if [ -f "start_server.sh" ]; then
-        ./start_server.sh
-    else
-        echo "start_server.sh 文件不存在，请检查 node0 仓库。"
-    fi
+    echo "正在启动服务器..."
+    ./start_server.sh
 
     echo "安装完成！"
     echo "按任意键返回主菜单..."

@@ -100,12 +100,13 @@ function install_and_deploy() {
     cd node0
 
     echo "正在检查并创建 screen 会话..."
-    if ! screen -list | grep -q "pluralis"; then
-        echo "创建 screen 会话..."
-        screen -S pluralis -d -m
-    else
-        echo "Screen 会话 'pluralis' 已存在，跳过创建..."
+    if screen -list | grep -q "pluralis"; then
+        echo "Screen 会话 'pluralis' 已存在，删除旧会话..."
+        screen -S pluralis -X quit
+        sleep 2
     fi
+    echo "创建新的 screen 会话..."
+    screen -S pluralis -d -m
 
     echo "正在检查并创建 conda 环境..."
     # 确保 conda 可用

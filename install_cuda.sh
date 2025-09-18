@@ -53,7 +53,6 @@ function install_and_deploy() {
     if ! command -v python3 &> /dev/null || ! command -v pip3 &> /dev/null; then
         echo "安装 Python 和开发工具..."
         sudo apt install -y python3-pip
-        sudo apt install pip
         sudo apt install -y build-essential libssl-dev libffi-dev python3-dev
     else
         echo "Python 工具已安装，跳过..."
@@ -67,13 +66,14 @@ function install_and_deploy() {
         bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
         rm ~/miniconda3/miniconda.sh
         
-        echo "正在激活和初始化 Miniconda..."
-        source ~/miniconda3/bin/activate
-        conda init --all
+        echo "正在初始化 Miniconda..."
+        ~/miniconda3/bin/conda init bash
     else
         echo "Miniconda 已安装，跳过..."
-        source ~/miniconda3/bin/activate
     fi
+
+    # 确保 conda 命令可用
+    source ~/.bashrc
 
     echo "正在检查并安装 NVIDIA CUDA Toolkit..."
     if ! command -v nvcc &> /dev/null; then
@@ -117,7 +117,7 @@ function install_and_deploy() {
         conda create -n node0 python=3.11 -y
     else
         echo "Conda 环境 'node0' 已存在，检查 Python 版本..."
-        conda activate node0
+        source ~/miniconda3/bin/activate node0
         python_version=$(python --version 2>&1 | cut -d' ' -f2 | cut -d'.' -f1,2)
         if [ "$python_version" != "3.11" ]; then
             echo "当前 Python 版本为 $python_version，需要重新创建环境..."
@@ -126,15 +126,25 @@ function install_and_deploy() {
         fi
     fi
 
-    echo "正在激活 conda 环境并安装包..."
-    # 确保 conda 环境正确激活
-    source ~/miniconda3/bin/activate
-    conda activate node0
+    echo "正在激活 conda 环境..."
+    # 确保激活正确的 conda 环境
+    source ~/miniconda3/bin/activate node0
     echo "当前 Python 版本: $(python --version)"
     echo "当前 Python 路径: $(which python)"
-    
-    # 确保使用 conda 环境中的 pip
-    pip install .
+    echo "当前 Pip 路径: $(which pip)"
+
+    # 验证 pip 版本是否匹配 Python 3.11
+    pip_version=$(pip --version | grep -o 'python3\.[0-9]\+')
+    if [[ "$pip_version" != "python3.11" ]]; then
+        echo "Pip 版本不匹配，尝试重新安装 pip..."
+        curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+        python get-pip.py
+        rm get-pip.py
+        echo "Pip 重新安装完成，当前 Pip 路径: $(which pip)"
+    fi
+
+    echo "正在安装 node0 包..."
+    pip install . --no-cache-dir
 
     echo "请输入您的 Hugging Face Token:"
     read HF_TOKEN
@@ -143,7 +153,7 @@ function install_and_deploy() {
     read EMAIL_ADDRESS
 
     echo "正在运行 generate_script.py..."
-    python3 generate_script.py --host_port 49200 --token $HF_TOKEN --email $EMAIL_ADDRESS
+    python generate_script.py --host_port 49200 --token $HF_TOKEN --email $EMAIL_ADDRESS
 
     echo ""
     echo "=========================================="
@@ -153,7 +163,7 @@ function install_and_deploy() {
 
     echo "正在启动服务器..."
     # 确保在正确的 conda 环境中启动服务器
-    conda activate node0
+    source ~/miniconda3/bin/activate node0
     ./start_server.sh
 
     echo "安装完成！"

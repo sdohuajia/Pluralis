@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# 脚本保存路径
-SCRIPT_PATH="$HOME/install_cuda.sh"
-
 # 主菜单函数
 function main_menu() {
     while true; do
@@ -111,6 +108,9 @@ function install_and_deploy() {
     fi
 
     echo "正在检查并创建 conda 环境..."
+    # 确保 conda 可用
+    source ~/miniconda3/bin/activate
+    
     if ! conda env list | grep -q "node0"; then
         echo "创建 conda 环境..."
         conda create -n node0 python=3.11 -y
@@ -126,8 +126,13 @@ function install_and_deploy() {
     fi
 
     echo "正在激活 conda 环境并安装包..."
+    # 确保 conda 环境正确激活
+    source ~/miniconda3/bin/activate
     conda activate node0
     echo "当前 Python 版本: $(python --version)"
+    echo "当前 Python 路径: $(which python)"
+    
+    # 确保使用 conda 环境中的 pip
     pip install .
 
     echo "请输入您的 Hugging Face Token:"
@@ -146,6 +151,8 @@ function install_and_deploy() {
     echo ""
 
     echo "正在启动服务器..."
+    # 确保在正确的 conda 环境中启动服务器
+    conda activate node0
     ./start_server.sh
 
     echo "安装完成！"

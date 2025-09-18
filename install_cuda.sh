@@ -112,11 +112,19 @@ function install_and_deploy() {
         echo "创建 conda 环境..."
         conda create -n node0 python=3.11 -y
     else
-        echo "Conda 环境 'node0' 已存在，跳过创建..."
+        echo "Conda 环境 'node0' 已存在，检查 Python 版本..."
+        conda activate node0
+        python_version=$(python --version 2>&1 | cut -d' ' -f2 | cut -d'.' -f1,2)
+        if [ "$python_version" != "3.11" ]; then
+            echo "当前 Python 版本为 $python_version，需要重新创建环境..."
+            conda env remove -n node0 -y
+            conda create -n node0 python=3.11 -y
+        fi
     fi
 
     echo "正在激活 conda 环境并安装包..."
     conda activate node0
+    echo "当前 Python 版本: $(python --version)"
     pip install .
 
     echo "请输入您的 Hugging Face Token:"
